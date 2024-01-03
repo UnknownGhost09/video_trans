@@ -17,8 +17,7 @@ from datetime import  timedelta
 from django.conf import settings
 KEYS = getattr(settings, "KEY_", None)
 from transformers import AutoProcessor, BarkModel
-processor = AutoProcessor.from_pretrained("suno/bark")
-model = BarkModel.from_pretrained("suno/bark")
+
 from IPython.display import Audio
 import scipy
 import os
@@ -53,7 +52,7 @@ def video_to_audio(input_path):
     clip.audio.write_audiofile(r"chunk0.mp3")
 def audio_to_audio(lang,song,voice):
     print('song',song)
-    print("Hello")
+    print("Hello",lang)
     arr=[i for i in range(10000,len(song),10000)]
     arr.insert(0,0)
     if len(song)>arr[-1]:
@@ -78,8 +77,12 @@ def audio_to_audio(lang,song,voice):
                     print(text)
                     text=translator.translate(text,dest=lang)
                     print(text.text)
+                    print('Hey')
                     o+=str(text.text)
-                    voice_preset = voices.get(str(lang)+'_'+str(voice))
+                    voice_preset = voices.get(str(lang)+'_'+str(voice).lower())
+                    print(voice_preset)
+                    processor = AutoProcessor.from_pretrained("suno/bark")
+                    model = BarkModel.from_pretrained("suno/bark")
                     inputs = processor(text.text, voice_preset=voice_preset)
                     audio_array = model.generate(**inputs)
                     audio_array = audio_array.cpu().numpy().squeeze()
@@ -112,19 +115,22 @@ def audio_to_video(inp,output_path,vd_name,obj,type,o):
     
     
 
-def start(inp_path,lang,out_path,vd_name,obj,type,output_type,voice):   
+def start(inp_path,lang,out_path,vd_name,obj,type,output_type,voice): 
+    print(inp_path,lang,out_path)  
     video_to_audio(inp_path)
+    print('Hello')
     audio = AudioSegment.from_file(os.path.join(os.getcwd(),'chunk0.mp3'))
     print("Hey")
     o=audio_to_audio(lang,audio,voice)
     audio_to_video(inp_path,out_path,vd_name,obj,type,o)
 
-    
+
 
 # Create your views here.
 def home(request):
     if request.session.has_key('email')  and request.session.get('role') == 'admin'  and request.session.has_key('token'):  
         try:
+           
             d = jwt.decode(request.session.get('token'), key=KEYS, algorithms=['HS256'])
             if d.get('email')!=request.session.get('email'):
                 return redirect('../../../')
@@ -142,6 +148,8 @@ def home(request):
             except:
                 pass
             return redirect('../../../login')
+    else:
+        return redirect('../../login')
     if request.method=='POST':
         if 'submit' in request.POST:
             vd=request.FILES.get('video')
@@ -165,7 +173,7 @@ def home(request):
             fl.save(vd.name,vd)
             obj=Video.objects.create(videofile=vd)
             for i in langs:
-                start(os.path.join(os.getcwd(),'media',str(vd)),i,os.path.join(os.getcwd(),f'media\{i}',str(i)+str(vd)),os.path.join(i,str(i)+str(vd)),obj,i,type,voice)
+                start(os.path.join(os.getcwd(),'media',str(vd)),i,os.path.join(os.getcwd(),f'media/{i}',str(i)+str(vd)),os.path.join(i,str(i)+str(vd)),obj,i,type,voice)
 
             
             return redirect(f'../../download/{obj.id}')
@@ -191,6 +199,8 @@ def download(request,pk=None):
             except:
                 pass
             return redirect('../../../login')
+    else:
+        return redirect('../../login')
     if pk is not None:
         data=ConvertedVideo.objects.filter(video_id=pk)
         return render(request,'index.html',{'data':data})
@@ -198,17 +208,29 @@ def download(request,pk=None):
         return redirect('../../../')
     
 def login(request):
-    if request.session.get('role')=='user':
-        return redirect("../../dashboard")
-    else:
+        message=request.session.get('message')
+        message1=request.session.get('message1')
+        try:
+            del request.session['message']
+        except:
+            pass
+        try:
+            del request.session['message1']
+        except:
+            pass
         if request.method=='POST': 
             em=request.POST.get('email')
             ps=request.POST.get('password')
+            print(em)
+            print(ps)
             try:
                 username=User.objects.get(email=em).username
             except:
-                return render(request,'userpages/login_2.html',{'message1':'Incorrect Email'})
-            usr=authenticate(email=em,password=ps)
+                message1='Incorrect Email Address'
+                request.session['message1']=message1
+                return redirect('../../../login')
+            usr=authenticate(username=username,password=ps)
+            print(usr)
             if usr is not None:
                 if usr.verified_at=='True' and usr.status=='1':     
                         request.session['email']=em
@@ -226,4 +248,28 @@ def login(request):
                             ip=ip = request.META.get('REMOTE_ADDR')
 
                         return redirect('../../../')
-    return render(request,'login.html')
+                else:
+                    message1='Email or Password Incorrect'
+                    request.session['message1']=message1
+                    return redirect('../../../login')
+            else:
+                message1='Email or Password Incorrect'
+                request.session['message1']=message1
+                return redirect('../../../login')
+        return render(request,'login.html',{'message':message,'message1':message1})
+
+
+def logout(request):
+    try:
+        del request.session['email']
+    except:
+        pass
+    try:
+        del request.session['role']
+    except:
+        pass
+    try:
+        del request.session['token']
+    except:
+        pass
+    return redirect('../../../login')
